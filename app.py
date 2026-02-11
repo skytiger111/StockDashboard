@@ -6,24 +6,36 @@ import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime
 from streamlit_extras.metric_cards import style_metric_cards
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 from utils.fetcher import fetch_multiple_stocks, fetch_stock_data, get_stock_name, get_tw_stock_candidates
 from utils.technical import calculate_indicators
 from utils.scorer import calculate_health_score
 from utils.scanner import scan_potential_stocks
+from utils.ai_writer import generate_stock_script
 
 # Page Config
 st.set_page_config(page_title="台股全方位戰情室", layout="wide", initial_sidebar_state="expanded")
 
 # --- Helper Functions ---
+# 獲取專案根目錄
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_FILE = os.path.join(BASE_DIR, "data", "stock_list.json")
+
 def load_stock_list():
-    if os.path.exists("data/stock_list.json"):
-        with open("data/stock_list.json", "r") as f:
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r") as f:
             return json.load(f)
     return []
 
 def save_stock_list(stocks):
-    with open("data/stock_list.json", "w") as f:
+    data_dir = os.path.dirname(DATA_FILE)
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
+    with open(DATA_FILE, "w") as f:
         json.dump(stocks, f)
 
 # --- Sidebar ---
@@ -55,6 +67,34 @@ if st.sidebar.button("🔄 更新數據"):
     st.cache_data.clear()
     st.rerun()
 
+st.sidebar.divider()
+st.sidebar.subheader("📈 全局分析對象")
+if stock_list:
+    stock_options = {f"{get_stock_name(s)} ({s})": s for s in stock_list}
+    global_selected_label = st.sidebar.selectbox("選擇要分析的個股", list(stock_options.keys()), key="global_stock_selector")
+    st.session_state.selected_stock = stock_options[global_selected_label]
+else:
+    st.sidebar.warning("請先新增股票")
+    st.session_state.selected_stock = None
+
+st.sidebar.divider()
+st.sidebar.subheader("📍 導覽選單")
+nav_options = {
+    "🏥 持股健康度": "health",
+    "📈 技術分析": "tech",
+    "💎 潛力尋寶": "scanner"
+}
+selection = st.sidebar.radio("跳轉至", list(nav_options.keys()))
+page = nav_options[selection]
+
+st.sidebar.divider()
+st.sidebar.subheader("🔑 AI 設定")
+# 先從環境變數讀取預設值
+default_api_key = os.getenv("GEMINI_API_KEY", "")
+gemini_api_key = st.sidebar.text_input("Gemini API Key", value=default_api_key, type="password", help="用於生成 AI 解盤腳本")
+if not gemini_api_key:
+    st.sidebar.info("💡 請輸入 API Key 或在 .env 設定 GEMINI_API_KEY 以啟用功能")
+
 # --- Data Loading ---
 @st.cache_data(ttl=3600)
 def get_all_data(symbols):
@@ -68,10 +108,8 @@ with st.spinner("🚀 正在獲取最新行情..."):
     all_processed_data = get_all_data(stock_list)
 
 # --- Main App ---
-tab1, tab2, tab3 = st.tabs(["🏥 持股健康度", "📈 技術分析", "💎 尋寶區"])
-
-# --- Tab 1: Health Check ---
-with tab1:
+# 改用導覽選單判斷顯示內容，徹底解決跳轉問題
+if page == "health":
     if not all_processed_data:
         st.info("請在側邊欄新增股票以開始分析。")
     else:
@@ -129,14 +167,12 @@ with tab1:
         st.dataframe(health_df.sort_values("健康分", ascending=False), use_container_width=True)
 
 # --- Tab 2: Technical Analysis ---
-with tab2:
+elif page == "tech":
+    st.header("📈 技術分析")
     if not stock_list:
         st.info("請先新增股票。")
-    else:
-        # Create display labels: "名稱 (代號)"
-        stock_options = {f"{get_stock_name(s)} ({s})": s for s in stock_list}
-        selected_label = st.selectbox("選擇要分析的個股", list(stock_options.keys()))
-        selected_stock = stock_options[selected_label]
+    elif st.session_state.selected_stock:
+        selected_stock = st.session_state.selected_stock
         if selected_stock in all_processed_data:
             df = all_processed_data[selected_stock]
             
@@ -164,8 +200,8 @@ with tab2:
             st.plotly_chart(fig_macd, use_container_width=True)
 
 # --- Tab 3: Gem Scanner ---
-with tab3:
-    st.subheader("💎 潛力尋寶：尋找壓縮待變")
+elif page == "scanner":
+    st.header("💎 潛力尋寶：尋找壓縮待變")
     
     scan_mode = st.radio("掃描範圍", ["僅自選股", "全市場優質股 (約 160 檔)"], horizontal=True)
     
@@ -206,3 +242,33 @@ with tab3:
         
         st.write("#### 篩選清單")
         st.dataframe(scanner_df, use_container_width=True)
+
+        # --- AI Script Generator Section ---
+        st.divider()
+        st.subheader("🎬 AI 解盤腳本生成器")
+        
+        col_select, col_btn = st.columns([3, 1])
+        with col_select:
+            # 建立選擇選單：名稱 (代碼)
+            script_options = {f"{row['名稱']} ({row['代碼']})": row['代碼'] for _, row in scanner_df.iterrows()}
+            selected_script_label = st.selectbox("選擇一檔潛力股生成腳本", list(script_options.keys()))
+            selected_stock_code = script_options[selected_script_label]
+        
+        with col_btn:
+            st.write(" ") # 調整對齊
+            generate_btn = st.button("✨ 生成解盤腳本", use_container_width=True)
+            
+        if generate_btn:
+            if not gemini_api_key:
+                st.error("❌ 請先在側邊欄輸入 Gemini API Key！")
+            else:
+                selected_row = scanner_df[scanner_df['代碼'] == selected_stock_code].iloc[0].to_dict()
+                with st.spinner(f"正在為 {selected_row['名稱']} 撰寫劇本..."):
+                    script_content = generate_stock_script(gemini_api_key, selected_row['名稱'], selected_row)
+                    st.session_state['generated_script'] = script_content
+        
+        if 'generated_script' in st.session_state:
+            st.divider()
+            st.info("✅ 腳本生成完畢！")
+            st.code(st.session_state['generated_script'], language="markdown")
+            st.caption("💡 提示：點擊右上角按鈕即可複製腳本")

@@ -6,3 +6,4 @@ yfinance
 plotly
 matplotlib
 pandas_ta
+google-generativeai
