@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-from utils.fetcher import fetch_multiple_stocks, fetch_stock_data, get_stock_name, get_tw_stock_candidates
+from utils.fetcher import fetch_multiple_stocks, fetch_stock_data, get_stock_name, get_tw_stock_candidates, get_institutional_data
 from utils.technical import calculate_indicators
 from utils.scorer import calculate_health_score
 from utils.scanner import scan_potential_stocks
@@ -166,6 +166,34 @@ if page == "health":
         st.subheader("詳細評分表")
         st.dataframe(health_df.sort_values("健康分", ascending=False), use_container_width=True)
 
+        # --- Tiger's Insight (理性的冒險家觀點) ---
+        st.divider()
+        st.subheader("🧗‍♂️ Tiger 的冒險觀點 (理性的投資建議)")
+        
+        # 挑選一檔分數最高與一檔分數最低的來評論
+        top_stock = health_df.sort_values("健康分", ascending=False).iloc[0]
+        worst_stock = health_df.sort_values("健康分", ascending=True).iloc[0]
+        
+        col_insight1, col_insight2 = st.columns(2)
+        
+        with col_insight1:
+            st.info(f"**🌟 強勢點評：{top_stock['名稱']} ({top_stock['代號']})**")
+            st.write(f"""
+            這檔股票目前健康分高達 **{top_stock['健康分']}**，且評級為 **{top_stock['評級']}**。
+            從「右側交易」的角度看，它的訊號相當明確。作為 53 歲的成熟投資者，
+            我們追求的是穩定中的強勢，這檔標的目前的 5MA/10MA 結構與動能都很適合為家人的資產增值。
+            """)
+            
+        with col_insight2:
+            st.warning(f"**⚠️ 風險叮嚀：{worst_stock['名稱']} ({worst_stock['代號']})**")
+            st.write(f"""
+            目前 **{worst_stock['名稱']}** 的分數僅有 **{worst_stock['健康分']}**。
+            雖然我們熱愛冒險，但在股市這片深潭中，必須保持理性的防守。
+            若這檔標的還在庫存中，建議審慎評估是否符合「保護資產」的初衷，切莫在弱勢區過度留戀。
+            """)
+        
+        st.caption("💡 *註：本觀點結合「右側交易」邏輯與「理性冒險家」的投資哲學，僅供參考。*")
+
 # --- Tab 2: Technical Analysis ---
 elif page == "tech":
     st.header("📈 技術分析")
@@ -198,6 +226,56 @@ elif page == "tech":
             fig_macd.add_trace(go.Scatter(x=df.index, y=df['MACDs_12_26_9'], name='Signal', line=dict(color='cyan')))
             fig_macd.update_layout(height=300, template="plotly_dark", title="MACD 指標")
             st.plotly_chart(fig_macd, use_container_width=True)
+            
+            # Institutional Investors Chart (三大法人買賣超)
+            st.subheader("📊 三大法人買賣超")
+            institutional_df = get_institutional_data(selected_stock)
+            
+            if institutional_df.empty:
+                st.warning("⚠️ 無法取得三大法人資料 (可能因證交所限制或資料暫不可用)")
+            else:
+                fig_inst = go.Figure()
+                
+                # 堆疊柱狀圖
+                fig_inst.add_trace(go.Bar(
+                    x=institutional_df['日期'],
+                    y=institutional_df['外資買賣超'],
+                    name='外資',
+                    marker_color='#4472C4'  # 藍色
+                ))
+                
+                fig_inst.add_trace(go.Bar(
+                    x=institutional_df['日期'],
+                    y=institutional_df['投信買賣超'],
+                    name='投信',
+                    marker_color='#E74C3C'  # 紅色 (關鍵指標)
+                ))
+                
+                fig_inst.add_trace(go.Bar(
+                    x=institutional_df['日期'],
+                    y=institutional_df['自營商買賣超'],
+                    name='自營商',
+                    marker_color='#27AE60'  # 綠色
+                ))
+                
+                fig_inst.update_layout(
+                    barmode='stack',
+                    height=400,
+                    template="plotly_dark",
+                    title="三大法人買賣超 (張數)",
+                    xaxis_title="日期",
+                    yaxis_title="買賣超 (張)",
+                    hovermode='x unified',
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        xanchor="right",
+                        x=1
+                    )
+                )
+                
+                st.plotly_chart(fig_inst, use_container_width=True)
 
 # --- Tab 3: Gem Scanner ---
 elif page == "scanner":
@@ -264,7 +342,14 @@ elif page == "scanner":
             else:
                 selected_row = scanner_df[scanner_df['代碼'] == selected_stock_code].iloc[0].to_dict()
                 with st.spinner(f"正在為 {selected_row['名稱']} 撰寫劇本..."):
-                    script_content = generate_stock_script(gemini_api_key, selected_row['名稱'], selected_row)
+                    # 抓取法人資料
+                    institutional_df = get_institutional_data(selected_stock_code)
+                    script_content = generate_stock_script(
+                        gemini_api_key, 
+                        selected_row['名稱'], 
+                        selected_row,
+                        institutional_df if not institutional_df.empty else None
+                    )
                     st.session_state['generated_script'] = script_content
         
         if 'generated_script' in st.session_state:

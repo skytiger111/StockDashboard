@@ -13,6 +13,7 @@ def calculate_indicators(df):
     
     # Moving Averages
     df['SMA5'] = df['Close'].rolling(window=5).mean()
+    df['SMA10'] = df['Close'].rolling(window=10).mean()
     df['SMA20'] = df['Close'].rolling(window=20).mean()
     df['SMA60'] = df['Close'].rolling(window=60).mean()
     

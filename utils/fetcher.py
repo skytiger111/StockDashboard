@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import streamlit as st
 import requests
+import twstock
 
 @st.cache_data(ttl=86400)
 def get_stock_name(symbol):
@@ -103,3 +104,92 @@ def fetch_multiple_stocks(symbols, period="1y"):
         if df is not None:
             data_dict[symbol] = df
     return data_dict
+
+@st.cache_data(ttl=3600)
+def get_institutional_data(stock_id):
+    """
+    抓取三大法人買賣超資料 (最近 30 日)
+    使用 FinMind API
+    
+    Args:
+        stock_id: 股票代號 (如 "2330.TW" 或 "2330")
+    
+    Returns:
+        DataFrame 包含: 日期、外資買賣超、投信買賣超、自營商買賣超
+        若失敗則回傳空 DataFrame
+    """
+    try:
+        from FinMind.data import DataLoader
+        
+        # 移除 .TW 後綴，取得純股票代號
+        clean_id = stock_id.replace('.TW', '').replace('.tw', '')
+        
+        # 計算日期範圍
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=60)  # 多抓一些確保有 30 個交易日
+        
+        # 格式化日期為 YYYY-MM-DD
+        start_date_str = start_date.strftime('%Y-%m-%d')
+        end_date_str = end_date.strftime('%Y-%m-%d')
+        
+        # 使用 FinMind DataLoader
+        dl = DataLoader()
+        
+        # 抓取個股三大法人買賣超資料
+        df = dl.taiwan_stock_institutional_investors(
+            stock_id=clean_id,
+            start_date=start_date_str,
+            end_date=end_date_str
+        )
+        
+        if df is None or df.empty:
+            return pd.DataFrame()
+        
+        # FinMind 資料結構：每個法人是分開的行，用 name 欄位區分
+        # 欄位：date, stock_id, buy, sell, name
+        # name 值：Foreign_Investor (外資), Investment_Trust (投信), Dealer_self (自營商自營)
+        
+        # 按日期分組處理
+        result_data = []
+        for date, group in df.groupby('date'):
+            trade_date = pd.to_datetime(date)
+            
+            # 初始化各法人買賣超
+            foreign = 0
+            trust = 0
+            dealer = 0
+            
+            # 找出各法人的買賣超 (buy - sell，單位：千股)
+            for _, row in group.iterrows():
+                investor_type = row['name']
+                buy_sell_diff = (float(row.get('buy', 0)) - float(row.get('sell', 0))) / 1000  # 轉張數
+                
+                if investor_type == 'Foreign_Investor':
+                    foreign = buy_sell_diff
+                elif investor_type == 'Investment_Trust':
+                    trust = buy_sell_diff
+                elif investor_type == 'Dealer_self':
+                    dealer = buy_sell_diff
+            
+            result_data.append({
+                '日期': trade_date,
+                '外資買賣超': foreign,
+                '投信買賣超': trust,
+                '自營商買賣超': dealer
+            })
+        
+        if not result_data:
+            return pd.DataFrame()
+        
+        # 轉換為 DataFrame
+        result_df = pd.DataFrame(result_data)
+        result_df = result_df.sort_values('日期', ascending=False).head(30)
+        result_df = result_df.sort_values('日期')
+        
+        return result_df
+        
+    except Exception as e:
+        print(f"抓取 {stock_id} 法人資料時發生錯誤: {e}")
+        import traceback
+        traceback.print_exc()
+        return pd.DataFrame()

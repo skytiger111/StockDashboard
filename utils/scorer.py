@@ -14,13 +14,21 @@ def calculate_health_score(df):
     score = 0.0
     reasons = []
     
-    # 趨勢面 (40%)
+    # 趨勢與策略面 (40%) - 融入主人「右側交易」邏輯
     if last_row['Close'] > last_row['SMA20']:
-        score += 2.0
-        reasons.append("收盤在月線上 (+2)")
+        score += 1.0
+        reasons.append("收盤在月線上 (+1)")
     if last_row['Close'] > last_row['SMA60']:
+        score += 1.0
+        reasons.append("收盤在季線上 (+1)")
+    
+    # 右側交易強度確認 (MA5 > MA10 且 Price > MA10)
+    if last_row['SMA5'] > last_row['SMA10'] and last_row['Close'] > last_row['SMA10']:
         score += 2.0
-        reasons.append("收盤在季線上 (+2)")
+        reasons.append("右側交易訊號：5MA 站上 10MA 且股價站穩 (+2)")
+    elif last_row['Close'] > last_row['SMA10']:
+        score += 1.0
+        reasons.append("股價站上 10MA (+1)")
         
     # 動能面 (30%)
     if last_row['RSI'] > 50:
