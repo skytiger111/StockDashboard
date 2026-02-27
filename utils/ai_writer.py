@@ -1,4 +1,4 @@
-import google.generativeai as genai
+from google import genai
 
 def generate_stock_script(api_key, stock_name, stock_data, institutional_data=None):
     """
@@ -14,9 +14,7 @@ def generate_stock_script(api_key, stock_name, stock_data, institutional_data=No
         return "⚠️ 請提供 Gemini API Key 以使用此功能。"
     
     try:
-        genai.configure(api_key=api_key)
-        # 根據主人偏好使用 gemini-2.5-flash
-        model = genai.GenerativeModel('gemini-2.5-flash') 
+        client = genai.Client(api_key=api_key)
         
         # 分析法人數據
         institutional_analysis = ""
@@ -81,7 +79,11 @@ def generate_stock_script(api_key, stock_name, stock_data, institutional_data=No
         # 合併提示詞
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
         
-        response = model.generate_content(full_prompt)
+        # 根據主人偏好使用 gemini-2.5-flash
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=full_prompt
+        )
         return response.text
         
     except Exception as e:
