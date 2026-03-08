@@ -82,7 +82,8 @@ st.sidebar.subheader("📍 導覽選單")
 nav_options = {
     "🏥 持股健康度": "health",
     "📈 技術分析": "tech",
-    "💎 潛力尋寶": "scanner"
+    "💎 潛力尋寶": "scanner",
+    "📊 策略回測": "backtest"
 }
 selection = st.sidebar.radio("跳轉至", list(nav_options.keys()))
 page = nav_options[selection]
@@ -357,3 +358,25 @@ elif page == "scanner":
             st.info("✅ 腳本生成完畢！")
             st.code(st.session_state['generated_script'], language="markdown")
             st.caption("💡 提示：點擊右上角按鈕即可複製腳本")
+
+# --- Tab 4: Strategy Backtest ---
+elif page == "backtest":
+    st.header("📊 策略回測")
+    if not stock_list:
+        st.info("請先新增股票。")
+    elif st.session_state.selected_stock:
+        selected_stock = st.session_state.selected_stock
+        if selected_stock in all_processed_data:
+            df = all_processed_data[selected_stock]
+            try:
+                import utils.backtest
+                import importlib
+                importlib.reload(utils.backtest)
+                from utils.backtest import run_taiwan_stock_backtest
+                run_taiwan_stock_backtest(df, symbol_name=get_stock_name(selected_stock))
+            except ImportError:
+                st.error("找不到套件 `vectorbt`。")
+                st.info("請在終端機執行 `pip install vectorbt` 完成安裝後重新整理網頁。")
+            except Exception as e:
+                st.error(f"回測執行失敗: {e}")
+                st.info("提示：可能是歷史資料長度不足或發生其他錯誤。")

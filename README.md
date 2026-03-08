@@ -27,18 +27,34 @@
 - **創作者風格**: 內建「台股專業且幽默短影音創作者」人格，生成的內容適合直接錄製 Reels/TikTok。
 - **一鍵導出**: 生成後可直接複製腳本，大幅縮短盤後分析與自媒體影音製作時間。
 
+### 📊 5. 策略深度回測 (Strategy Backtest)
+- **VectorBT 驅動**: 整合 **vectorbt** 強大回測引擎，支援毫秒級的專業績效運算。
+- **右側交易驗證**: 內建「站上 5MA/10MA 進場、跌破 10MA 出場」的實戰策略，一鍵驗證你的投資直覺。
+- **真實成本模擬**: 自動導入台股交易手續費（含折讓計算）、證交稅與市場滑價（Slippage），讓回測結果更貼近實戰。
+- **專業績效指標**: 即時產出累積報酬率、勝率 (Win Rate)、最大回撤 (MDD) 與獲利因子 (Profit Factor)。
+- **視覺化分析**: 整合權益曲線、水下圖 (Drawdown) 與標註進出場點位的技術圖表。
+- **參數尋優熱力圖**: 自動計算快慢線排列組合，產生「均線參數熱力圖」，一鍵找出報酬率最高的最佳策略參數。
+- **Tiger's Insight**: 內建 AI 績效評估盲點提示，自動提醒強多頭走勢下的右側交易局限性。
+
+
+
 ## 🚀 快速啟動
 
 ### 環境準備
-本專案建議使用 **Python 3.12+** 或最新實驗性版本。
+本專案建議使用 **Python 3.12+**。
 
 1. **建立虛擬環境與安裝依賴**:
    ```powershell
    python -m venv .venv
    .\.venv\Scripts\activate
    pip install -r requirements.txt
-   pip install -r StockDashboard/requirements.txt
+   # 安裝策略回測引擎 (若為 Linux/WSL 環境請見下方提示)
+   pip install vectorbt
    ```
+
+   > [!TIP]
+   > 如果你在 WSL/Linux 環境執行，請確保使用 `wsl` 指令進入環境安裝：
+   > `wsl /mnt/d/code/venv_linux/bin/pip install vectorbt`
 
 2. **設定環境變數**:
    在專案根目錄或 `StockDashboard` 目錄下建立 `.env` 檔案：
@@ -61,6 +77,7 @@
     - 整合台灣金融資料開源專案 FinMind，穩定取得三大法人買賣超資料。
     - 克服證交所 API 反爬蟲限制，確保資料抓取穩定性。
     - 法人資料快取 1 小時，減少 API 呼叫次數。
+- **回測引擎整合**: 整合 `vectorbt` 進行高性能時間序列分析，並處理台股特有的交易成本結構。
 
 ```
 .\.venv\Scripts\streamlit run StockDashboard\app.py
